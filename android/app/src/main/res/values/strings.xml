@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Top Cell Admin</string>
+    <string name="title_activity_main">Top Cell Admin</string>
+    <string name="package_name">com.topcell.admin</string>
+    <string name="custom_url_scheme">com.topcell.admin</string>
+</resources>

@@ -1,0 +1,9 @@
+{
+  "appId": "com.topcell.admin",
+  "appName": "Top Cell Admin",
+  "webDir": "dist",
+  "backgroundColor": "#050B1A",
+  "android": {
+    "backgroundColor": "#050B1A"
+  }
+}
