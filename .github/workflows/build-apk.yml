@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install deps
         run: npm ci
@@ -32,22 +32,7 @@ jobs:
           java-version: 21
 
       - name: Sync Capacitor Android
-        id: sync_step
-        continue-on-error: true
-        run: |
-          npx cap sync android > sync-debug.log 2>&1
-          echo "EXIT_CODE=$?" >> sync-debug.log
-          cat sync-debug.log
-
-      - name: Save debug log if sync failed
-        if: steps.sync_step.outcome == 'failure'
-        run: |
-          git config user.email "ci@topcell.local"
-          git config user.name "CI Debug"
-          git add -f sync-debug.log
-          git commit -m "debug: log do erro no cap sync android [skip ci]"
-          git push
-          exit 1
+        run: npx cap sync android
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
