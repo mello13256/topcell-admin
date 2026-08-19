@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,7 +32,22 @@ jobs:
           java-version: 21
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        id: sync_step
+        continue-on-error: true
+        run: |
+          npx cap sync android > sync-debug.log 2>&1
+          echo "EXIT_CODE=$?" >> sync-debug.log
+          cat sync-debug.log
+
+      - name: Save debug log if sync failed
+        if: steps.sync_step.outcome == 'failure'
+        run: |
+          git config user.email "ci@topcell.local"
+          git config user.name "CI Debug"
+          git add -f sync-debug.log
+          git commit -m "debug: log do erro no cap sync android [skip ci]"
+          git push
+          exit 1
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
