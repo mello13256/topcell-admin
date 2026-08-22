@@ -9,8 +9,8 @@ import { createClient } from "@supabase/supabase-js";
 // Nenhum dos dois é secreto de verdade (a proteção real vem das
 // políticas de RLS no banco), então pode deixar direto no código.
 // ============================================================
-const SUPABASE_URL = "COLE_AQUI";
-const SUPABASE_ANON_KEY = "COLE_AQUI";
+const SUPABASE_URL = "https://jpgvlzpbzdzzrxhldrzt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mtjAZCJL4ZO0LjDP9zMfeQ_Jln6EYlq";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
