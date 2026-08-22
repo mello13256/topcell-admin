@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import PinGate from "./components/PinGate";
 import ProductList from "./components/ProductList";
 import ProductForm from "./components/ProductForm";
-import { ensureSignedIn } from "./lib/firebase";
+import { ensureSignedIn } from "./lib/supabase";
 import "./index.css";
 
 export default function App() {

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, deleteDoc, doc, updateDoc, orderBy, query } from "firebase/firestore";
-import { ref, deleteObject } from "firebase/storage";
-import { db, storage } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { CATEGORIES } from "../lib/config";
 
 export default function ProductList({ onEdit, onNew }) {
@@ -10,23 +8,38 @@ export default function ProductList({ onEdit, onNew }) {
   const [search, setSearch] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  async function fetchProducts() {
+    const { data, error } = await supabase
+      .from("produtos")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (!error) setProducts(data || []);
+    setLoading(false);
+  }
+
   useEffect(() => {
-    const q = query(collection(db, "produtos"), orderBy("updatedAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
+    fetchProducts();
+
+    // Realtime: qualquer mudança na tabela (de qualquer funcionário,
+    // em qualquer aparelho) atualiza a lista na hora.
+    const channel = supabase
+      .channel("produtos-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "produtos" }, () => {
+        fetchProducts();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   async function toggleStock(p) {
-    await updateDoc(doc(db, "produtos", p.id), { estoque: !p.estoque });
+    await supabase.from("produtos").update({ estoque: !p.estoque }).eq("id", p.id);
   }
 
   async function handleDelete(p) {
-    await deleteDoc(doc(db, "produtos", p.id));
-    if (p.fotoPath) {
-      deleteObject(ref(storage, p.fotoPath)).catch(() => {});
+    await supabase.from("produtos").delete().eq("id", p.id);
+    if (p.foto_path) {
+      supabase.storage.from("produtos").remove([p.foto_path]).catch(() => {});
     }
     setConfirmDelete(null);
   }
@@ -56,7 +69,7 @@ export default function ProductList({ onEdit, onNew }) {
         {filtered.map((p) => (
           <div key={p.id} className={"product-row" + (p.estoque ? "" : " out")}>
             <div className="row-thumb">
-              {p.fotoUrl ? <img src={p.fotoUrl} alt="" /> : <span>{catIcon(p.categoria)}</span>}
+              {p.foto_url ? <img src={p.foto_url} alt="" /> : <span>{catIcon(p.categoria)}</span>}
             </div>
             <div className="row-info" onClick={() => onEdit(p)}>
               <div className="row-name">{p.nome}</div>

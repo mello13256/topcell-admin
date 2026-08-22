@@ -4,17 +4,20 @@ App Android nativo (via Capacitor) pra gerenciar o catálogo da loja:
 adicionar/editar/excluir produtos, tirar foto na hora (sem precisar de link),
 marcar estoque, tudo sincronizado em tempo real com o app do cliente.
 
-## 1. Configurar o Firebase (uma vez só)
+Backend: **Supabase** (gratuito, sem necessidade de cartão de crédito).
 
-1. Acesse [console.firebase.google.com](https://console.firebase.google.com) → **Criar projeto** → nome "topcell" (ou o que preferir).
-2. No menu lateral: **Compilação → Firestore Database** → **Criar banco de dados** → modo de produção → qualquer região (ex: `southamerica-east1`).
-3. Depois de criado, vá em **Regras** e cole o conteúdo do arquivo `firestore.rules` deste repo → Publicar.
-4. No menu lateral: **Compilação → Storage** → **Começar** → modo de produção → mesma região.
-5. Em **Regras** do Storage, cole o conteúdo de `storage.rules` deste repo → Publicar.
-6. No menu lateral: **Compilação → Authentication** → **Começar** → aba **Sign-in method** → ativa **Anônimo**.
-7. Vá em **Configurações do projeto** (ícone de engrenagem) → aba **Geral** → desça até "Seus apps" → clique no ícone **`</>`** (Web) → dá um nome (ex: "topcell-web") → **Registrar app**.
-8. Copia o objeto `firebaseConfig` que aparece e cola em `src/lib/firebase.js` (substitui os `"COLE_AQUI"`).
-9. Repete esse mesmo `firebaseConfig` no app do cliente (`topcell-app`), quando eu atualizar ele pra ler do Firebase.
+## 1. Configurar o Supabase (uma vez só)
+
+1. Acesse [supabase.com](https://supabase.com) → **Start your project** → entra com GitHub (sem pedir cartão)
+2. **New project** → dá um nome (ex: "topcell") → escolhe uma senha de banco (guarda ela, mas não vamos precisar usar diretamente) → região mais próxima (ex: South America - São Paulo)
+3. Espera uns 2 minutos o projeto terminar de provisionar
+4. No menu lateral: **SQL Editor** → **New query** → cola o conteúdo do arquivo `supabase-setup.sql` deste repositório → clica em **Run**
+   - **Antes de rodar a parte de Storage**: vai em **Storage** (menu lateral) → **New bucket** → nome exatamente `produtos` → marca **Public bucket** → cria. Só depois volta e roda o resto do SQL (a parte de baixo, sobre `storage.objects`).
+5. No menu lateral: **Authentication → Providers** → confirma que **Anonymous Sign-ins** está habilitado (geralmente já vem ativado; se não, ativa).
+6. **Configurações do projeto** (ícone de engrenagem) → **API** → copia:
+   - **Project URL**
+   - **anon public** key
+7. Cola esses dois valores em `src/lib/supabase.js`, no lugar dos `"COLE_AQUI"`.
 
 ## 2. Trocar o PIN de acesso
 
@@ -36,10 +39,11 @@ automaticamente. O `.apk` fica disponível em:
 
 ## Estrutura
 
-- `src/lib/firebase.js` — configuração e login anônimo
+- `src/lib/supabase.js` — configuração e login anônimo
 - `src/lib/config.js` — PIN e categorias
 - `src/components/PinGate.jsx` — tela de bloqueio por PIN
-- `src/components/ProductList.jsx` — lista/busca/estoque/exclusão
+- `src/components/ProductList.jsx` — lista/busca/estoque/exclusão (com realtime)
 - `src/components/ProductForm.jsx` — cadastro/edição com câmera
+- `supabase-setup.sql` — script de configuração do banco de dados
 - `android/` — projeto nativo gerado pelo Capacitor
 - `.github/workflows/build-apk.yml` — pipeline de build automático

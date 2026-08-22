@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
-import { db, storage } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { CATEGORIES } from "../lib/config";
 
 const BLANK = {
   nome: "", categoria: "celulares", preco: "", variante: "",
-  estoque: true, badge: "", fotoUrl: "", fotoPath: "",
+  estoque: true, badge: "", foto_url: "", foto_path: "",
 };
+
+function base64ToBlob(base64, contentType) {
+  const byteChars = atob(base64);
+  const byteArray = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+  return new Blob([byteArray], { type: contentType });
+}
 
 export default function ProductForm({ existing, onDone, onCancel }) {
   const [form, setForm] = useState(existing ? { ...BLANK, ...existing } : BLANK);
-  const [photoPreview, setPhotoPreview] = useState(existing?.fotoUrl || null);
-  const [photoFile, setPhotoFile] = useState(null); // { blob, contentType }
+  const [photoPreview, setPhotoPreview] = useState(existing?.foto_url || null);
+  const [photoFile, setPhotoFile] = useState(null); // { base64, contentType }
   const [saving, setSaving] = useState(false);
   const [uploadPct, setUploadPct] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -49,25 +54,26 @@ export default function ProductForm({ existing, onDone, onCancel }) {
 
     setSaving(true);
     try {
-      let fotoUrl = form.fotoUrl;
-      let fotoPath = form.fotoPath;
+      let foto_url = form.foto_url;
+      let foto_path = form.foto_path;
 
       if (photoFile) {
-        setUploadPct(10);
+        setUploadPct(15);
         // apaga foto antiga se estava trocando
-        if (fotoPath) {
-          deleteObject(ref(storage, fotoPath)).catch(() => {});
+        if (foto_path) {
+          supabase.storage.from("produtos").remove([foto_path]).catch(() => {});
         }
-        const filename = `produtos/${Date.now()}.jpg`;
-        const storageRef = ref(storage, filename);
-        const byteChars = atob(photoFile.base64);
-        const byteArray = new Uint8Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-        setUploadPct(40);
-        await uploadBytes(storageRef, byteArray, { contentType: photoFile.contentType });
-        setUploadPct(80);
-        fotoUrl = await getDownloadURL(storageRef);
-        fotoPath = filename;
+        const filename = `${Date.now()}.jpg`;
+        const blob = base64ToBlob(photoFile.base64, photoFile.contentType);
+        setUploadPct(45);
+        const { error: uploadError } = await supabase.storage
+          .from("produtos")
+          .upload(filename, blob, { contentType: photoFile.contentType, upsert: true });
+        if (uploadError) throw uploadError;
+        setUploadPct(85);
+        const { data: publicUrlData } = supabase.storage.from("produtos").getPublicUrl(filename);
+        foto_url = publicUrlData.publicUrl;
+        foto_path = filename;
         setUploadPct(100);
       }
 
@@ -78,15 +84,17 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         variante: form.variante.trim(),
         estoque: !!form.estoque,
         badge: form.badge.trim(),
-        fotoUrl,
-        fotoPath,
-        updatedAt: serverTimestamp(),
+        foto_url,
+        foto_path,
+        updated_at: new Date().toISOString(),
       };
 
       if (existing?.id) {
-        await updateDoc(doc(db, "produtos", existing.id), payload);
+        const { error } = await supabase.from("produtos").update(payload).eq("id", existing.id);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, "produtos"), payload);
+        const { error } = await supabase.from("produtos").insert(payload);
+        if (error) throw error;
       }
       onDone();
     } catch (err) {
