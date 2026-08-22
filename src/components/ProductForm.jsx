@@ -8,19 +8,43 @@ const BLANK = {
   estoque: true, badge: "", foto_url: "", foto_path: "",
 };
 
-function base64ToBlob(base64, contentType) {
-  const byteChars = atob(base64);
-  const byteArray = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-  return new Blob([byteArray], { type: contentType });
+// Redimensiona e recomprime a foto no próprio aparelho antes de subir.
+// A foto original (que pode vir bem pesada da câmera) nunca é enviada
+// nem guardada — só essa versão comprimida, o que economiza MUITO
+// espaço na cota gratuita de armazenamento.
+const MAX_WIDTH = 900;
+const JPEG_QUALITY = 0.62;
+
+function compressImage(base64, contentType) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, MAX_WIDTH / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir a imagem"))),
+        "image/jpeg",
+        JPEG_QUALITY
+      );
+    };
+    img.onerror = () => reject(new Error("Falha ao carregar a imagem pra compressão"));
+    img.src = `data:${contentType};base64,${base64}`;
+  });
 }
 
 export default function ProductForm({ existing, onDone, onCancel }) {
   const [form, setForm] = useState(existing ? { ...BLANK, ...existing } : BLANK);
   const [photoPreview, setPhotoPreview] = useState(existing?.foto_url || null);
-  const [photoFile, setPhotoFile] = useState(null); // { base64, contentType }
+  const [photoFile, setPhotoFile] = useState(null); // Blob já comprimido, pronto pra subir
   const [saving, setSaving] = useState(false);
   const [uploadPct, setUploadPct] = useState(null);
+  const [compressing, setCompressing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   function set(field, value) {
@@ -32,15 +56,22 @@ export default function ProductForm({ existing, onDone, onCancel }) {
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.Base64,
         source,
-        quality: 70,
-        width: 1000,
+        quality: 85,
         correctOrientation: true,
       });
-      const base64 = photo.base64String;
-      const contentType = `image/${photo.format || "jpeg"}`;
-      setPhotoPreview(`data:${contentType};base64,${base64}`);
-      setPhotoFile({ base64, contentType });
+      const rawBase64 = photo.base64String;
+      const rawContentType = `image/${photo.format || "jpeg"}`;
+
+      setCompressing(true);
+      // Comprime/redimensiona aqui; a foto "crua" (rawBase64) some da
+      // memória depois disso e nunca é enviada pro servidor.
+      const compressedBlob = await compressImage(rawBase64, rawContentType);
+      setCompressing(false);
+
+      setPhotoPreview(URL.createObjectURL(compressedBlob));
+      setPhotoFile(compressedBlob);
     } catch (err) {
+      setCompressing(false);
       // usuário cancelou a captura — não é erro
     }
   }
@@ -64,11 +95,10 @@ export default function ProductForm({ existing, onDone, onCancel }) {
           supabase.storage.from("produtos").remove([foto_path]).catch(() => {});
         }
         const filename = `${Date.now()}.jpg`;
-        const blob = base64ToBlob(photoFile.base64, photoFile.contentType);
         setUploadPct(45);
         const { error: uploadError } = await supabase.storage
           .from("produtos")
-          .upload(filename, blob, { contentType: photoFile.contentType, upsert: true });
+          .upload(filename, photoFile, { contentType: "image/jpeg", upsert: true });
         if (uploadError) throw uploadError;
         setUploadPct(85);
         const { data: publicUrlData } = supabase.storage.from("produtos").getPublicUrl(filename);
@@ -115,11 +145,17 @@ export default function ProductForm({ existing, onDone, onCancel }) {
       <form onSubmit={handleSave} className="product-form">
         <div className="photo-picker">
           <div className="photo-preview">
-            {photoPreview ? <img src={photoPreview} alt="" /> : <span className="photo-placeholder">📷</span>}
+            {compressing ? (
+              <span className="photo-placeholder">⏳</span>
+            ) : photoPreview ? (
+              <img src={photoPreview} alt="" />
+            ) : (
+              <span className="photo-placeholder">📷</span>
+            )}
           </div>
           <div className="photo-actions">
-            <button type="button" className="btn-outline" onClick={() => takePhoto(CameraSource.Camera)}>Tirar foto</button>
-            <button type="button" className="btn-outline" onClick={() => takePhoto(CameraSource.Photos)}>Galeria</button>
+            <button type="button" className="btn-outline" disabled={compressing} onClick={() => takePhoto(CameraSource.Camera)}>Tirar foto</button>
+            <button type="button" className="btn-outline" disabled={compressing} onClick={() => takePhoto(CameraSource.Photos)}>Galeria</button>
           </div>
         </div>
 
