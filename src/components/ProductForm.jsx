@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { supabase } from "../lib/supabase";
 import { CATEGORIES } from "../lib/config";
@@ -15,7 +16,7 @@ const BLANK = {
 const MAX_WIDTH = 900;
 const JPEG_QUALITY = 0.62;
 
-function compressImage(base64, contentType) {
+function compressImageSrc(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -34,7 +35,28 @@ function compressImage(base64, contentType) {
       );
     };
     img.onerror = () => reject(new Error("Falha ao carregar a imagem pra compressão"));
-    img.src = `data:${contentType};base64,${base64}`;
+    img.src = src;
+  });
+}
+
+// No app Android nativo (Capacitor) usamos o plugin de Câmera de verdade.
+// Rodando como PWA no navegador (iPhone, ou Android via navegador) esse
+// plugin não tem interface própria — então usamos um <input type="file">
+// escondido, que no celular abre a câmera/galeria nativa do sistema.
+function pickPhotoFromBrowser(useCamera) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    if (useCamera) input.capture = "environment";
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) { reject(new Error("cancelado")); return; }
+      resolve(file);
+    };
+    // se o usuário cancelar o seletor, nenhum evento dispara — sem problema,
+    // o formulário só continua sem foto nova.
+    input.click();
   });
 }
 
@@ -53,21 +75,34 @@ export default function ProductForm({ existing, onDone, onCancel }) {
 
   async function takePhoto(source) {
     try {
-      const photo = await Camera.getPhoto({
-        resultType: CameraResultType.Base64,
-        source,
-        quality: 85,
-        correctOrientation: true,
-      });
-      const rawBase64 = photo.base64String;
-      const rawContentType = `image/${photo.format || "jpeg"}`;
+      let compressedBlob;
 
-      setCompressing(true);
-      // Comprime/redimensiona aqui; a foto "crua" (rawBase64) some da
-      // memória depois disso e nunca é enviada pro servidor.
-      const compressedBlob = await compressImage(rawBase64, rawContentType);
+      if (Capacitor.isNativePlatform()) {
+        // App Android instalado de verdade — usa a câmera nativa via Capacitor.
+        const photo = await Camera.getPhoto({
+          resultType: CameraResultType.Base64,
+          source,
+          quality: 85,
+          correctOrientation: true,
+        });
+        const rawBase64 = photo.base64String;
+        const rawContentType = `image/${photo.format || "jpeg"}`;
+        setCompressing(true);
+        compressedBlob = await compressImageSrc(`data:${rawContentType};base64,${rawBase64}`);
+      } else {
+        // PWA rodando no navegador (iPhone ou Android) — usa o seletor
+        // nativo do sistema operacional via <input type="file">.
+        const file = await pickPhotoFromBrowser(source === CameraSource.Camera);
+        setCompressing(true);
+        const objectUrl = URL.createObjectURL(file);
+        try {
+          compressedBlob = await compressImageSrc(objectUrl);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      }
+
       setCompressing(false);
-
       setPhotoPreview(URL.createObjectURL(compressedBlob));
       setPhotoFile(compressedBlob);
     } catch (err) {
