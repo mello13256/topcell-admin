@@ -5,11 +5,14 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,3 +59,32 @@ jobs:
           body: "APK gerado automaticamente. Baixe o arquivo .apk abaixo e instale no celular (pode ser necessário permitir 'instalar de fontes desconhecidas')."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-pwa:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build web app (PWA)
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
