@@ -80,7 +80,13 @@ export default function ProductList({ onEdit, onNew }) {
                 <input type="checkbox" checked={!!p.estoque} onChange={() => toggleStock(p)} />
                 <span>{p.estoque ? "Em estoque" : "Esgotado"}</span>
               </label>
-              <button className="row-delete" onClick={() => setConfirmDelete(p)}>🗑</button>
+              <button className="row-delete" onClick={() => setConfirmDelete(p)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="3" width="18" height="18" rx="5"/>
+                  <line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/>
+                  <line x1="15.5" y1="8.5" x2="8.5" y2="15.5"/>
+                </svg>
+              </button>
             </div>
           </div>
         ))}

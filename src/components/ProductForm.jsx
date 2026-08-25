@@ -6,7 +6,7 @@ import { CATEGORIES } from "../lib/config";
 
 const BLANK = {
   nome: "", categoria: "celulares", preco: "", variante: "",
-  estoque: true, badge: "", foto_url: "", foto_path: "",
+  estoque: true, badge: "", foto_url: "", foto_path: "", destaque: false,
 };
 
 // Redimensiona e recomprime a foto no próprio aparelho antes de subir.
@@ -148,6 +148,7 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         preco: form.preco.toString().trim(),
         variante: form.variante.trim(),
         estoque: !!form.estoque,
+        destaque: !!form.destaque,
         badge: form.badge.trim(),
         foto_url,
         foto_path,
@@ -214,6 +215,11 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         <label className="switch-row">
           <span>Em estoque</span>
           <input type="checkbox" checked={form.estoque} onChange={(e) => set("estoque", e.target.checked)} />
+        </label>
+
+        <label className="switch-row">
+          <span>Destaque (sempre visível no topo do catálogo)</span>
+          <input type="checkbox" checked={form.destaque} onChange={(e) => set("destaque", e.target.checked)} />
         </label>
 
         {errorMsg && <div className="form-error">{errorMsg}</div>}
