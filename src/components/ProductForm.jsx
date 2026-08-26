@@ -7,6 +7,7 @@ import { CATEGORIES } from "../lib/config";
 const BLANK = {
   nome: "", categoria: "celulares", preco: "", variante: "",
   estoque: true, badge: "", foto_url: "", foto_path: "", destaque: false,
+  condicao: "novo",
 };
 
 // Redimensiona e recomprime a foto no próprio aparelho antes de subir.
@@ -149,6 +150,7 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         variante: form.variante.trim(),
         estoque: !!form.estoque,
         destaque: !!form.destaque,
+        condicao: form.categoria === "celulares" ? form.condicao : null,
         badge: form.badge.trim(),
         foto_url,
         foto_path,
@@ -202,6 +204,24 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         <select className="field-input" value={form.categoria} onChange={(e) => set("categoria", e.target.value)}>
           {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
+
+        {form.categoria === "celulares" && (
+          <>
+            <label className="field-label">Condição do aparelho</label>
+            <div className="segmented">
+              <button
+                type="button"
+                className={"segmented-btn" + (form.condicao === "novo" ? " active" : "")}
+                onClick={() => set("condicao", "novo")}
+              >Novo</button>
+              <button
+                type="button"
+                className={"segmented-btn" + (form.condicao === "usado" ? " active" : "")}
+                onClick={() => set("condicao", "usado")}
+              >Usado / Seminovo</button>
+            </div>
+          </>
+        )}
 
         <label className="field-label">Preço (R$)</label>
         <input className="field-input" inputMode="decimal" value={form.preco} onChange={(e) => set("preco", e.target.value)} placeholder="Ex: 1.299,00" />

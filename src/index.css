@@ -114,6 +114,20 @@ body{
   width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid rgba(58,166,255,0.3);
   background: var(--navy-2); color:var(--white); font-size:0.95rem; outline:none;
 }
+.segmented{
+  display:flex; gap:8px;
+  background: var(--navy-2); border:1.5px solid rgba(58,166,255,0.3);
+  border-radius:12px; padding:4px;
+}
+.segmented-btn{
+  flex:1; padding:9px 4px; border:none; border-radius:9px;
+  background:transparent; color:#8fa3c9; font-weight:700; font-size:0.85rem;
+  font-family:'Rajdhani', sans-serif; cursor:pointer; transition: background .15s ease, color .15s ease;
+}
+.segmented-btn.active{
+  background: linear-gradient(120deg, var(--blue), var(--blue-bright));
+  color:#fff;
+}
 .switch-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:18px; font-weight:700; }
 .switch-row span{ font-size:0.9rem; }
 .switch-row input{ width:20px; height:20px; flex-shrink:0; }
