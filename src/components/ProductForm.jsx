@@ -7,8 +7,10 @@ import { CATEGORIES } from "../lib/config";
 const BLANK = {
   nome: "", categoria: "celulares", preco: "", variante: "",
   estoque: true, badge: "", foto_url: "", foto_path: "", destaque: false,
-  condicao: "novo",
+  condicao: "novo", fotos_extras: [],
 };
+
+const MAX_EXTRA_PHOTOS = 5;
 
 // Redimensiona e recomprime a foto no próprio aparelho antes de subir.
 // A foto original (que pode vir bem pesada da câmera) nunca é enviada
@@ -65,6 +67,13 @@ export default function ProductForm({ existing, onDone, onCancel }) {
   const [form, setForm] = useState(existing ? { ...BLANK, ...existing } : BLANK);
   const [photoPreview, setPhotoPreview] = useState(existing?.foto_url || null);
   const [photoFile, setPhotoFile] = useState(null); // Blob já comprimido, pronto pra subir
+  // Fotos extras (detalhe). Cada item é { url, path, blob }:
+  // - já salvas no servidor vêm com url+path e sem blob
+  // - recém-adicionadas vêm com blob (e url local só pra pré-visualizar)
+  const [extraPhotos, setExtraPhotos] = useState(
+    Array.isArray(existing?.fotos_extras) ? existing.fotos_extras.map(f => ({ ...f, blob: null })) : []
+  );
+  const [removedExtraPaths, setRemovedExtraPaths] = useState([]);
   const [saving, setSaving] = useState(false);
   const [uploadPct, setUploadPct] = useState(null);
   const [compressing, setCompressing] = useState(false);
@@ -74,35 +83,34 @@ export default function ProductForm({ existing, onDone, onCancel }) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  // Captura uma imagem (câmera ou galeria) já comprimida, funcionando
+  // tanto no app Android nativo quanto na versão PWA.
+  async function capturePhotoBlob(source) {
+    if (Capacitor.isNativePlatform()) {
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.Base64,
+        source,
+        quality: 85,
+        correctOrientation: true,
+      });
+      const rawBase64 = photo.base64String;
+      const rawContentType = `image/${photo.format || "jpeg"}`;
+      setCompressing(true);
+      return await compressImageSrc(`data:${rawContentType};base64,${rawBase64}`);
+    }
+    const file = await pickPhotoFromBrowser(source === CameraSource.Camera);
+    setCompressing(true);
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      return await compressImageSrc(objectUrl);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
   async function takePhoto(source) {
     try {
-      let compressedBlob;
-
-      if (Capacitor.isNativePlatform()) {
-        // App Android instalado de verdade — usa a câmera nativa via Capacitor.
-        const photo = await Camera.getPhoto({
-          resultType: CameraResultType.Base64,
-          source,
-          quality: 85,
-          correctOrientation: true,
-        });
-        const rawBase64 = photo.base64String;
-        const rawContentType = `image/${photo.format || "jpeg"}`;
-        setCompressing(true);
-        compressedBlob = await compressImageSrc(`data:${rawContentType};base64,${rawBase64}`);
-      } else {
-        // PWA rodando no navegador (iPhone ou Android) — usa o seletor
-        // nativo do sistema operacional via <input type="file">.
-        const file = await pickPhotoFromBrowser(source === CameraSource.Camera);
-        setCompressing(true);
-        const objectUrl = URL.createObjectURL(file);
-        try {
-          compressedBlob = await compressImageSrc(objectUrl);
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
-      }
-
+      const compressedBlob = await capturePhotoBlob(source);
       setCompressing(false);
       setPhotoPreview(URL.createObjectURL(compressedBlob));
       setPhotoFile(compressedBlob);
@@ -110,6 +118,29 @@ export default function ProductForm({ existing, onDone, onCancel }) {
       setCompressing(false);
       // usuário cancelou a captura — não é erro
     }
+  }
+
+  async function addExtraPhoto(source) {
+    if (extraPhotos.length >= MAX_EXTRA_PHOTOS) return;
+    try {
+      const compressedBlob = await capturePhotoBlob(source);
+      setCompressing(false);
+      setExtraPhotos((list) => [
+        ...list,
+        { url: URL.createObjectURL(compressedBlob), path: null, blob: compressedBlob },
+      ]);
+    } catch (err) {
+      setCompressing(false);
+    }
+  }
+
+  function removeExtraPhoto(index) {
+    setExtraPhotos((list) => {
+      const item = list[index];
+      // se já estava salva no servidor, marca pra apagar de lá no save
+      if (item?.path) setRemovedExtraPaths((paths) => [...paths, item.path]);
+      return list.filter((_, i) => i !== index);
+    });
   }
 
   async function handleSave(e) {
@@ -125,23 +156,49 @@ export default function ProductForm({ existing, onDone, onCancel }) {
       let foto_path = form.foto_path;
 
       if (photoFile) {
-        setUploadPct(15);
+        setUploadPct(10);
         // apaga foto antiga se estava trocando
         if (foto_path) {
           supabase.storage.from("produtos").remove([foto_path]).catch(() => {});
         }
         const filename = `${Date.now()}.jpg`;
-        setUploadPct(45);
         const { error: uploadError } = await supabase.storage
           .from("produtos")
           .upload(filename, photoFile, { contentType: "image/jpeg", upsert: true });
         if (uploadError) throw uploadError;
-        setUploadPct(85);
         const { data: publicUrlData } = supabase.storage.from("produtos").getPublicUrl(filename);
         foto_url = publicUrlData.publicUrl;
         foto_path = filename;
-        setUploadPct(100);
+        setUploadPct(30);
       }
+
+      // Sobe as fotos extras que ainda não estão no servidor
+      const novasExtras = extraPhotos.filter((p) => p.blob);
+      const fotosFinais = [];
+      let feitas = 0;
+      for (const item of extraPhotos) {
+        if (!item.blob) {
+          fotosFinais.push({ url: item.url, path: item.path });
+          continue;
+        }
+        const filename = `extra_${Date.now()}_${feitas}.jpg`;
+        const { error: upErr } = await supabase.storage
+          .from("produtos")
+          .upload(filename, item.blob, { contentType: "image/jpeg", upsert: true });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("produtos").getPublicUrl(filename);
+        fotosFinais.push({ url: pub.publicUrl, path: filename });
+        feitas++;
+        if (novasExtras.length) {
+          setUploadPct(30 + Math.round((feitas / novasExtras.length) * 65));
+        }
+      }
+
+      // Apaga do servidor as fotos extras que foram removidas
+      if (removedExtraPaths.length) {
+        supabase.storage.from("produtos").remove(removedExtraPaths).catch(() => {});
+      }
+      setUploadPct(100);
 
       const payload = {
         nome: form.nome.trim(),
@@ -154,6 +211,7 @@ export default function ProductForm({ existing, onDone, onCancel }) {
         badge: form.badge.trim(),
         foto_url,
         foto_path,
+        fotos_extras: fotosFinais,
         updated_at: new Date().toISOString(),
       };
 
@@ -195,6 +253,35 @@ export default function ProductForm({ existing, onDone, onCancel }) {
             <button type="button" className="btn-outline" disabled={compressing} onClick={() => takePhoto(CameraSource.Camera)}>Tirar foto</button>
             <button type="button" className="btn-outline" disabled={compressing} onClick={() => takePhoto(CameraSource.Photos)}>Galeria</button>
           </div>
+        </div>
+        <div className="photo-hint">Foto de capa — é a que aparece no catálogo</div>
+
+        <label className="field-label">Fotos de detalhe (opcional)</label>
+        <div className="extra-photos">
+          {extraPhotos.map((p, i) => (
+            <div className="extra-thumb" key={p.path || p.url || i}>
+              <img src={p.url} alt="" />
+              <button
+                type="button"
+                className="extra-remove"
+                onClick={() => removeExtraPhoto(i)}
+                aria-label="Remover foto"
+              >✕</button>
+            </div>
+          ))}
+          {extraPhotos.length < MAX_EXTRA_PHOTOS && (
+            <div className="extra-add-group">
+              <button type="button" className="extra-add" disabled={compressing} onClick={() => addExtraPhoto(CameraSource.Camera)}>
+                <span>📷</span>
+              </button>
+              <button type="button" className="extra-add" disabled={compressing} onClick={() => addExtraPhoto(CameraSource.Photos)}>
+                <span>🖼️</span>
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="photo-hint">
+          {extraPhotos.length}/{MAX_EXTRA_PHOTOS} — aparecem quando o cliente abre o anúncio
         </div>
 
         <label className="field-label">Nome do produto</label>
